@@ -4,7 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from fml2 import Disty,DistyNorm,Agg,AggMax
-import gravity_generator
+from gravity_generator import GravityDataset
+from torch.utils.data import Dataset, DataLoader
 
 class Model(nn.Module):
     def __init__(self,gz,dim):
@@ -41,10 +42,10 @@ class Model(nn.Module):
 
     def forward(self, goals,inputs):
         inputs_grid=self.agg.forward(self.R.forward(self.disty.forward(inputs)),inputs)
-        goals_grid=self.agg.forward(self.R.forward(self.disty.forward(goals)),goals)
+        #goals_grid=self.agg.forward(self.R.forward(self.disty.forward(goals)),goals)
         #inputs_grid=self.agg.forward(self.disty.forward(inputs),inputs)
         #goals_grid=self.agg.forward(self.disty.forward(goals),goals)
-        scenes=torch.cat((inputs_grid,goals_grid),1)
+        scenes=inputs_grid #torch.cat((inputs_grid,goals_grid),1)
 
         output = self.conv_model(scenes)
 
@@ -76,30 +77,45 @@ class Model(nn.Module):
 
         return cost,g_sum,g_abs_sum
 
-def get_examples(n=1):
+dim=2
+gz=15.0
+
+def collate_gravity(l):
     goals=[]
     inputs=[]
-    for x in range(n):
-        train_example=gravity_generator.get_examples(min_mass=1,max_mass=10,n=1)[0]
-        goals.append({'points':Variable(1e7*torch.Tensor(train_example['force']),requires_grad=False) , 'attrs':torch.Tensor(train_example['mass'])})
+    for train_example in l:
+        goals.append({'points':Variable(1e7*torch.Tensor(train_example['force']),requires_grad=False)})
         inputs.append({'points':Variable(torch.Tensor(train_example['xyzs']),requires_grad = True) , 'attrs':torch.Tensor(train_example['mass'])})
-        #inputs.append({'points':Variable(torch.Tensor(train_example['xyzs']),requires_grad = True) })
     return goals,inputs
 
-test_set = get_examples(128)
+train_loader = DataLoader(GravityDataset(size=1000,dim=2), batch_size=3,collate_fn=collate_gravity)
+test_loader = DataLoader(GravityDataset(size=1000,dim=2), batch_size=3,collate_fn=collate_gravity)
 
-dim=3
-gz=15.0
+#test_set = get_examples(128)
+
 
 model = Model(gz,dim)
 
 learning_rate = 1e-5
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+for epoch in range(1000):
+    for i,batch in enumerate(train_loader,0):
+        if i%10==0:
+            #test
+            model.eval()
+            for 
+            test_goals,test_inputs=batch
+            test_loss,_,_ = model(test_goals,test_inputs)
+            print(test_loss)
+            #test_loss += test_out.item()
+            #mean_loss += (torch.cat([goal['points'] for goal in goals_test ])**2).mean().item()
+        
+    print(batch)
+    sys.exit()
 for t in range(50000):
     mmbz=16
 
     #evaluate on test set, and get difference to mean (0)
-    model.eval()
 
     #goals_test,inputs_test=get_examples(max(1,mmbz/10))
     test_loss = 0
