@@ -1,23 +1,30 @@
 from __future__ import print_function
 from torch.autograd import Variable
 import torch
-import torch.nn as nn
 
-class Model(nn.Module):
+class Model(torch.nn.Module):
     def __init__(self):
         super(Model, self).__init__()
-        self.conv=nn.Conv2d(1,1,2)
+        self.conv=torch.nn.Conv2d(1,1,1)
+        self.conv.weight.data.fill_(1)
+        self.conv.bias.data.fill_(0)
+        self.linear=torch.nn.Linear(1,1)
+        self.linear.weight.data.fill_(1)
+        self.linear.bias.data.fill_(0)
 
-    def forward(self,x):
-        x=2*x
-        tmp=self.conv(x).sum()
+    def forward(self,xo):
+        x=self.conv(xo.reshape(1,1,1,1)**2).sum().reshape(1,1) # required otherwise second deriviative is a scalar not depending on other variable
+        x+=self.linear(xo.reshape(1,1)**2)
+        l=torch.autograd.grad(outputs=x,inputs=xo,create_graph=True)[0]
+        y=(l**2).sum()
+        model.zero_grad()
 
-        #two options
-        tmp.backward()
-        #torch.autograd.grad(tmp,x,create_graph=True)
+        #use grad of backward
+        #force=torch.autograd.grad(outputs=y,inputs=xo,create_graph=True,allow_unused=True)[0]
+        y.backward()
 
 model=Model()
-x=Variable(torch.Tensor([[1,2],[3,4]]),requires_grad=True).reshape(1,1,2,2)
+x=Variable(torch.tensor([[1.0]]),requires_grad=True)
 loss=model(x)
-for parameter in model.parameters():
-    print("GRAD",parameter.size(),parameter.grad)
+for name,parameter in model.named_parameters():
+    print("GRAD",name,parameter.size(),parameter.grad)
