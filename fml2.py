@@ -17,6 +17,24 @@ class AggMax(nn.Module):
         #output should be 1 x r_out x gz^dim
         return input.max(0,True)[0].transpose(2,1)
 
+class AggSum(nn.Module):
+    def __init__(self):
+        super(AggSum, self).__init__()
+
+    def forward(self,input):
+        #input n x gz^dim x r_out
+        #output should be 1 x r_out x gz^dim
+        return input.sum(0,True).transpose(2,1)
+
+class AggProd(nn.Module):
+    def __init__(self):
+        super(AggProd, self).__init__()
+
+    def forward(self,input):
+        #input n x gz^dim x r_out
+        #output should be 1 x r_out x gz^dim
+        return input.prod(0,True)[0].transpose(2,1)
+
 class Agg(nn.Module):
     def grid_to_points(self,g,n=1):
         return g.contiguous().view(n*pow(self.gz,self.dim),self.dim) 
@@ -65,6 +83,8 @@ class DistyNorm(nn.Module):
             print("invalid distance type?")
         return distances
 
+
+#points to distance to grid points
 class Disty(nn.Module):
     def make_grid(self,n=1):
         t=torch.linspace(-(self.gz/2),self.gz/2,self.gz)
@@ -83,7 +103,7 @@ class Disty(nn.Module):
         self.norm  = norm
 
     def forward(self, inputs):
-        #firs tlets get input into an array
+        #first lets get input into an array
         points=torch.cat([ input['points'] for input in inputs ])
         n=points.shape[0]
         #now lets repeat each point by grid shape...
@@ -96,6 +116,7 @@ class Disty(nn.Module):
 
         if 'attrs' in inputs[0]:
             attrs=torch.cat([ input['attrs'] for input in inputs ]).view((n,1,-1)).expand(n,pow(self.gz,self.dim),-1).contiguous().view(n*pow(self.gz,self.dim),-1)
+            #TODO DOES THIS WORK FOR MULTIPLE INPUTS????
             distances_with_attrs=torch.cat((distances.view(-1,1),attrs),dim=1)
             return distances_with_attrs
         else:

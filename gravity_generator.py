@@ -7,20 +7,23 @@ import pickle
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
-G=6.674e-11
+G=1.0  #6.674e-11
+def show_scene(points,mass,force,pred=None):
+    plt.clf()
+    plt.axes().set_aspect('equal', 'datalim')
+    #print(mass)
+    #print(force)
+    #print(pred)
+    for idx in range(points.shape[0]):
+        plt.scatter(points[idx, 0], points[idx, 1], s=mass[idx], marker='.', c='r')
+        plt.quiver(points[idx, 0], points[idx, 1], force[idx,0]/G, force[idx,1]/G,color='b')
+        if pred is not None:
+            plt.quiver(points[idx, 0], points[idx, 1], pred[idx,0]/G, pred[idx,1]/G,color='g')
+    plt.pause(0.1)
 
 class GravityDataset(Dataset):
     """Face Landmarks dataset."""
 
-    def show_scene(self,scene):
-        plt.clf()
-        plt.axes().set_aspect('equal', 'datalim')
-        for idx in range(scene['xyzs'].shape[0]):
-            plt.scatter(scene['xyzs'][idx, 0], scene['xyzs'][idx, 1], s=scene['mass'][idx], marker='.', c='r')
-            plt.quiver(scene['xyzs'][idx, 0], scene['xyzs'][idx, 1], scene['force'][idx,0]/G, scene['force'][idx,1]/G,color='b')
-            if 'pred' in scene:
-                plt.quiver(scene['xyzs'][idx, 0], scene['xyzs'][idx, 1], scene['force'][idx,0]/G, scene['force'][idx,1]/G,color='g')
-        plt.pause(1)
 
     def __init__(self, dim, size, seed=0, max_bodies=10,min_bodies=2,max_mass=1000,min_mass=1,box_size=10):
         self.r = np.random.RandomState(seed)
@@ -38,16 +41,16 @@ class GravityDataset(Dataset):
         #number of planets per example
         planets=np.floor(np.random.rand(n)*(max_bodies-min_bodies+1)+min_bodies).astype(np.int)
         #xyz coord of each planet for all examples
-        xyzs=np.random.rand(planets.sum(),dim)*box_size-box_size/2
+        points=np.random.rand(planets.sum(),dim)*box_size-box_size/2
         #mass of each planet
         ms=np.random.rand(planets.sum(),1)*(max_mass-min_mass)+min_mass
     
         idx=0
         out=[]
         for x in planets: # the next x planets are interacting
-            current_xyzs=xyzs[idx:idx+x]
+            current_points=points[idx:idx+x]
             current_masses=ms[idx:idx+x]
-            distances=scipy.spatial.distance.squareform(scipy.spatial.distance.pdist(current_xyzs))
+            distances=scipy.spatial.distance.squareform(scipy.spatial.distance.pdist(current_points))
             m=scipy.spatial.distance.squareform(scipy.spatial.distance.pdist(current_masses, lambda u, v: u*v))*G
             f=np.zeros((x,dim))
             E=np.zeros(x)
@@ -55,12 +58,12 @@ class GravityDataset(Dataset):
             for i in range(x):
                 for j in range(x):
                     if i!=j:
-                        rv=current_xyzs[i]-current_xyzs[j]
+                        rv=current_points[i]-current_points[j]
                         r=np.linalg.norm(rv)
-                        ru[i,j,:]=(current_xyzs[j]-current_xyzs[i])/pow(r,dim)
+                        ru[i,j,:]=(current_points[j]-current_points[i])/pow(r,dim)
                         f[i]+=m[i,j]*ru[i,j,:]
                         E[i]+=m[i,j]/r
-            out.append({'distances':distances,'mass':current_masses,'energy':sum(E),'force':f,'xyzs':current_xyzs})
+            out.append({'distances':distances,'mass':current_masses,'energy':sum(E),'force':f,'points':current_points})
             idx+=x
         return out
 
