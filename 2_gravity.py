@@ -46,7 +46,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.gz = gz
         self.conv_model = nn.Sequential()
-        self.act = nn.Softplus # nn.ELU
+        self.act = nn.ELU # nn.Softplus # nn.ELU
         self.conv = nn.Conv2d
         self.bn = nn.BatchNorm2d
         if dim==3:
@@ -54,7 +54,7 @@ class Model(nn.Module):
             self.bn = nn.BatchNorm3d
         bn=False
        
-        conv=False
+        conv=True
         if conv:
             #self.conv_model.add_module("conv1",self.conv(4, 8, 5, stride=2,padding=2))
             self.conv_model.add_module("conv1",self.conv(2, 8, 5, stride=2,padding=2))
@@ -67,12 +67,23 @@ class Model(nn.Module):
                     self.conv_model.add_module("bn%d" % (x+2),self.bn(8))
                 self.conv_model.add_module("act%d" % (x+2),self.act())
         else:
-            self.conv_model.add_module("lin1",nn.Linear(15*15*2,15*15*2))
+            #self.conv_model.add_module("lin1",nn.Linear(15*15*2,15*15*2))
+            self.conv_model.add_module("lin1",nn.Linear(9*2,9*16))
             self.conv_model.add_module("act1",self.act())
-            self.conv_model.add_module("lin2",nn.Linear(15*15*2,15*15*2))
-            self.conv_model.add_module("act2",self.act())
-            self.conv_model.add_module("lin3",nn.Linear(15*15*2,15*15*2))
+            self.conv_model.add_module("lin2",nn.Linear(9*16,9*16))
             self.conv_model.add_module("act3",self.act())
+            self.conv_model.add_module("lin3",nn.Linear(9*16,9*16))
+            self.conv_model.add_module("act4",self.act())
+            self.conv_model.add_module("lin4",nn.Linear(9*16,18))
+            self.conv_model.add_module("act5",self.act())
+            self.conv_model.add_module("lin5",nn.Linear(9*2,1))
+            #self.conv_model.add_module("lin2",nn.Linear(15*15*2,15*15*2))
+            #self.conv_model.add_module("bn2",nn.BatchNorm1d(15*15*2))
+            #self.conv_model.add_module("act2",self.act())
+            #self.conv_model.add_module("lin3",nn.Linear(15*15*2,15*15*2))
+            #self.conv_model.add_module("bn3",nn.BatchNorm1d(15*15*2))
+            #self.conv_model.add_module("act3",self.act())
+            #self.conv_model.add_module("lin4",nn.Linear(15*15*2,15*15*2))
 
         print(self.conv_model)
 
@@ -88,11 +99,11 @@ class Model(nn.Module):
 
     def forward(self, goals,inputs):
         tmp=self.disty.forward(inputs)
-        tmp=self.R.forward(tmp)
+        R_tmp=self.R.forward(tmp)
         #tmp=tmp.prod(1,True)
-        inputs_grid=self.agg.forward(tmp,inputs)
+        inputs_grid=self.agg.forward(R_tmp,inputs)
         energy=None
-        if False:
+        if True:
             #goals_grid=self.agg.forward(self.R.forward(self.disty.forward(goals)),goals)
             #inputs_grid=self.agg.forward(self.disty.forward(inputs),inputs)
             #goals_grid=self.agg.forward(self.disty.forward(goals),goals)
@@ -102,22 +113,24 @@ class Model(nn.Module):
         else:
             scenes=inputs_grid.view(len(inputs),-1)
             output = self.conv_model(scenes)
-            energy = output.mean(1,False)
+            #energy = output.mean(1,False)
+            energy = output.sum(1,False)
         #print("FWD SUM",output.sum())
         
         #inputs_tensor = torch.cat([ input['points'] for input in inputs ],0) #TODO WHY CANT I DO THIS?!?!?!
-        #d_output_to_input = torch.cat(torch.autograd.grad(output,inputs_tensor,create_graph=True),0)
+        #d_output_to_input = torch.autograd.grad(output.sum(),inputs_tensor,create_graph=True)
+        #print(d_output_to_input.size())
+        #sys.exit(1)
 
 
         #iterate...
+        loss=0
         if False: #broken? TODO
             cost=0
             g_sum=0
             g_abs_sum=0
             for idx in range(len(inputs)):
-                output[idx].mean().backward()
-                d_output_to_input = torch.autograd.grad(output[idx].mean(),inputs[idx]['points'],create_graph=True)[0]
-                print(d_output_to_input.sum())
+                d_output_to_input, = torch.autograd.grad(output[idx].mean(),inputs[idx]['points'],create_graph=True,retain_graph=True)
                 inputs[idx]['pred']=d_output_to_input
                 cost += ((d_output_to_input-goals[idx]['points'])**2).mean()
                 #cost += ((d_output_to_input-goals[idx]['points']).abs()).mean()
@@ -134,10 +147,17 @@ class Model(nn.Module):
         #cost=0
         #dE_dx = [ torch.autograd.grad(energy[idx], inputs[idx]['points'],create_graph=True) for idx in range(len(inputs)) ]
         #input_tensors = [ input['points'] for input in inputs ]
-        loss=0
-        for idx in range(len(inputs)):
-                dE_dx, = torch.autograd.grad(energy[idx], inputs[idx]['points'],create_graph=True)
+        if True:
+            for idx in range(len(inputs)):
+                #dE_dx, = torch.autograd.grad(energy[idx], inputs[idx]['points'],create_graph=True)
+                dE_dx, = torch.autograd.grad(output.sum(), inputs[idx]['points'],create_graph=True)
                 inputs[idx]['pred']=dE_dx
+                #if idx==1:
+                #    print("PRED",dE_dx)
+                #    print("GOAL",goals[idx]['points'])
+                #sys.exit(1)
+                #print(dE_dx.size(),goals[idx]['points'].size(),scenes.size())
+                #sys.exit(1)
                 loss += (((dE_dx - goals[idx]['points'])/inputs[idx]['points'].size()[0])**2).sum()
         #loss.backward()
         #print(loss)
@@ -168,24 +188,26 @@ def collate_gravity(l):
     inputs=[]
     for train_example in l:
         #goals.append({'points':Variable(1e7*torch.Tensor(train_example['force']),requires_grad=False)})
-        goals.append({'points':Variable(torch.Tensor(train_example['force']),requires_grad=False)})
+        goals.append({'points':Variable(torch.Tensor(train_example['force'])/10000,requires_grad=False)})
         inputs.append({'points':Variable(torch.Tensor(train_example['points']),requires_grad = True) , 'attrs':torch.Tensor(train_example['mass'])})
     return goals,inputs
 
 dim=2
-gz=15.0
+gz=9.0
 
-train_loader = DataLoader(GravityDataset(size=32*64,dim=dim), batch_size=32,collate_fn=collate_gravity)
-test_loader = DataLoader(GravityDataset(size=1000,dim=dim), batch_size=32,collate_fn=collate_gravity)
+train_loader = DataLoader(GravityDataset(size=256*8,dim=dim), batch_size=64,collate_fn=collate_gravity)
+test_loader = DataLoader(GravityDataset(size=1000,dim=dim), batch_size=64,collate_fn=collate_gravity)
 
 model = Model(gz,dim)
 
-learning_rate = 1e-5
+learning_rate = 5e-4 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 #optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-for epoch in range(1000):
+for epoch in range(10000):
     train_loss=0
     sz=0
+    epoch_loss=0
+    epoch_size=0
     for i,train_batch in enumerate(train_loader,0):
         sz+=len(train_batch[0])
         if False and i%10==0:
@@ -199,19 +221,22 @@ for epoch in range(1000):
         
         #run a training round
         model.train()
-        optimizer.zero_grad()
         
         train_goals,train_inputs=train_batch
         model_out,s,a = model(train_goals,train_inputs)
         
         train_loss += model_out.item()
+        epoch_loss += train_loss
+        epoch_size += sz
         #ga = a.item()
         #gs = s.item()
-    
+   
+        optimizer.zero_grad()
         #print("PARAM",sum([ x.sum() for x in model.parameters() ]),sum([ np.prod(x.size()) for x in model.parameters() ]))
-        model_out.backward()
         #for parameter in model.parameters():
-        #    print("GRAD",parameter.size(),parameter.grad)
+        #    print("PARAMS",parameter.size())
+        #    #print("GRAD",parameter.size(),parameter.grad)
+        model_out.backward()
         #plot_grad_flow(model.conv_model.named_parameters())
         optimizer.step()
         force=train_goals[0]['points'].detach().numpy()
@@ -220,6 +245,6 @@ for epoch in range(1000):
         show_scene(train_inputs[0]['points'].detach().numpy(),train_inputs[0]['attrs'].detach().numpy(),force,pred=pred)
         
         #print("TRAIN",train_loss,"TEST",test_loss,"TEST_MEAN",mean_loss,"DIFF",mean_loss-test_loss,ga,gs)
-        print(" TRAIN LOSS",train_loss/sz)
-    print("TRAIN LOSS",train_loss/sz)
+        #print(" TRAIN LOSS",train_loss/sz)
+    print("TRAIN LOSS",epoch_loss/epoch_size)
             

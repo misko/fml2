@@ -62,7 +62,7 @@ class Agg(nn.Module):
         return torch.cat(aggd_hs,0)
 
 class DistyNorm(nn.Module):
-    def __init__(self,dim,norm="inv"):
+    def __init__(self,dim,norm="euc"):
         super(DistyNorm, self).__init__()
         self.dim = int(dim)
         self.norm  = norm
