@@ -54,36 +54,16 @@ class Model(nn.Module):
             self.bn = nn.BatchNorm3d
         bn=False
        
-        conv=True
-        if conv:
-            #self.conv_model.add_module("conv1",self.conv(4, 8, 5, stride=2,padding=2))
-            self.conv_model.add_module("conv1",self.conv(2, 8, 5, stride=2,padding=2))
+        #self.conv_model.add_module("conv1",self.conv(4, 8, 5, stride=2,padding=2))
+        self.conv_model.add_module("conv1",self.conv(2, 8, 5, stride=2,padding=2))
+        if bn:
+            self.conv_model.add_module("bn1",self.bn(8))
+        self.conv_model.add_module("act1",self.act())
+        for x in range(3):
+            self.conv_model.add_module("conv%d" % (x+2),self.conv(8, 8, 5, stride=1,padding=2))
             if bn:
-                self.conv_model.add_module("bn1",self.bn(8))
-            self.conv_model.add_module("act1",self.act())
-            for x in range(3):
-                self.conv_model.add_module("conv%d" % (x+2),self.conv(8, 8, 5, stride=1,padding=2))
-                if bn:
-                    self.conv_model.add_module("bn%d" % (x+2),self.bn(8))
+                self.conv_model.add_module("bn%d" % (x+2),self.bn(8))
                 self.conv_model.add_module("act%d" % (x+2),self.act())
-        else:
-            #self.conv_model.add_module("lin1",nn.Linear(15*15*2,15*15*2))
-            self.conv_model.add_module("lin1",nn.Linear(9*2,9*16))
-            self.conv_model.add_module("act1",self.act())
-            self.conv_model.add_module("lin2",nn.Linear(9*16,9*16))
-            self.conv_model.add_module("act3",self.act())
-            self.conv_model.add_module("lin3",nn.Linear(9*16,9*16))
-            self.conv_model.add_module("act4",self.act())
-            self.conv_model.add_module("lin4",nn.Linear(9*16,18))
-            self.conv_model.add_module("act5",self.act())
-            self.conv_model.add_module("lin5",nn.Linear(9*2,1))
-            #self.conv_model.add_module("lin2",nn.Linear(15*15*2,15*15*2))
-            #self.conv_model.add_module("bn2",nn.BatchNorm1d(15*15*2))
-            #self.conv_model.add_module("act2",self.act())
-            #self.conv_model.add_module("lin3",nn.Linear(15*15*2,15*15*2))
-            #self.conv_model.add_module("bn3",nn.BatchNorm1d(15*15*2))
-            #self.conv_model.add_module("act3",self.act())
-            #self.conv_model.add_module("lin4",nn.Linear(15*15*2,15*15*2))
 
         print(self.conv_model)
 
@@ -102,83 +82,15 @@ class Model(nn.Module):
         R_tmp=self.R.forward(tmp)
         #tmp=tmp.prod(1,True)
         inputs_grid=self.agg.forward(R_tmp,inputs)
-        energy=None
-        if True:
-            #goals_grid=self.agg.forward(self.R.forward(self.disty.forward(goals)),goals)
-            #inputs_grid=self.agg.forward(self.disty.forward(inputs),inputs)
-            #goals_grid=self.agg.forward(self.disty.forward(goals),goals)
-            scenes=inputs_grid #torch.cat((inputs_grid,goals_grid),1)
-            output = self.conv_model(scenes)
-            energy = output.mean(3,False).mean(2,False).mean(1,False)
-        else:
-            scenes=inputs_grid.view(len(inputs),-1)
-            output = self.conv_model(scenes)
-            #energy = output.mean(1,False)
-            energy = output.sum(1,False)
-        #print("FWD SUM",output.sum())
-        
-        #inputs_tensor = torch.cat([ input['points'] for input in inputs ],0) #TODO WHY CANT I DO THIS?!?!?!
-        #d_output_to_input = torch.autograd.grad(output.sum(),inputs_tensor,create_graph=True)
-        #print(d_output_to_input.size())
-        #sys.exit(1)
-
+        output = self.conv_model(inputs_grid)
+        energy = output.mean(3,False).mean(2,False).mean(1,False)
 
         #iterate...
         loss=0
-        if False: #broken? TODO
-            cost=0
-            g_sum=0
-            g_abs_sum=0
-            for idx in range(len(inputs)):
-                d_output_to_input, = torch.autograd.grad(output[idx].mean(),inputs[idx]['points'],create_graph=True,retain_graph=True)
-                inputs[idx]['pred']=d_output_to_input
-                cost += ((d_output_to_input-goals[idx]['points'])**2).mean()
-                #cost += ((d_output_to_input-goals[idx]['points']).abs()).mean()
-                g_sum += d_output_to_input.sum()
-                g_abs_sum += d_output_to_input.abs().sum()
-            cost/=len(inputs)
-            g_sum/=len(inputs)
-            g_abs_sum/=len(inputs)
-
-        #do it all at once
-        #calculate F=dE/dx
-        #idx=0
-        #torch.autograd.grad(energy[idx], inputs[idx]['points'], create_graph=True)
-        #cost=0
-        #dE_dx = [ torch.autograd.grad(energy[idx], inputs[idx]['points'],create_graph=True) for idx in range(len(inputs)) ]
-        #input_tensors = [ input['points'] for input in inputs ]
-        if True:
-            for idx in range(len(inputs)):
-                #dE_dx, = torch.autograd.grad(energy[idx], inputs[idx]['points'],create_graph=True)
-                dE_dx, = torch.autograd.grad(output.sum(), inputs[idx]['points'],create_graph=True)
-                inputs[idx]['pred']=dE_dx
-                #if idx==1:
-                #    print("PRED",dE_dx)
-                #    print("GOAL",goals[idx]['points'])
-                #sys.exit(1)
-                #print(dE_dx.size(),goals[idx]['points'].size(),scenes.size())
-                #sys.exit(1)
-                loss += (((dE_dx - goals[idx]['points'])/inputs[idx]['points'].size()[0])**2).sum()
-        #loss.backward()
-        #print(loss)
-        #dF_dE = torch.autograd.grad(loss,energy[0],create_graph=True)
-        #print(dF_dE)
-        #for parameter in model.parameters():
-        #    print("GRAD",parameter.size(),parameter.grad)
-        #    torch.autograd.grad(loss,parameter,create_graph=True,allow_unused=True)
-        #print(scales)
-        #pred_force=torch.autograd.grad(energy,input_tensors[0],create_graph=True)
-        #goals_tensor = torch.cat([ goal['points'] for goal in goals ],0)
-        #print(output.mean(3,False).mean(2,False).mean(1,False).size())
-        #print(input_tensor.size())
-        #print(len(inputs))
-        #print(scales)
-        #model.zero_grad()
-        #d_output_to_input = torch.autograd.grad(output.mean(),inputs['points'],create_graph=True)
-        #d_output_to_input = torch.cat(torch.autograd.grad(output.mean(),inputs['points'],create_graph=True),1)
-        #cost = ((d_output_to_input-goals_tensor)**2).mean()
-        #g_sum = d_output_to_input.sum()
-        #g_abs_sum = d_output_to_input.abs().sum()
+        for idx in range(len(inputs)):
+            dE_dx, = torch.autograd.grad(output.sum(), inputs[idx]['points'],create_graph=True)
+            inputs[idx]['pred']=dE_dx
+            loss += (((dE_dx - goals[idx]['points'])/inputs[idx]['points'].size()[0])**2).sum()
 
         return loss,0,0 #g_sum,g_abs_sum
 
@@ -198,7 +110,20 @@ gz=9.0
 train_loader = DataLoader(GravityDataset(size=256*8,dim=dim), batch_size=64,collate_fn=collate_gravity)
 test_loader = DataLoader(GravityDataset(size=1000,dim=dim), batch_size=64,collate_fn=collate_gravity)
 
+
 model = Model(gz,dim)
+
+def save_model(model,optimizer,save_fn,epoch):
+    torch.save({
+			'epoch': epoch,
+			'model_state_dict': model.state_dict(),
+			'optimizer_state_dict': optimizer.state_dict(),
+			}, save_fn)
+
+def load_model(save_fn):
+    model.load_state_dict(torch.load(save_fn))
+
+        
 
 learning_rate = 5e-4 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -210,7 +135,8 @@ for epoch in range(10000):
     epoch_size=0
     for i,train_batch in enumerate(train_loader,0):
         sz+=len(train_batch[0])
-        if False and i%10==0:
+        if i%1000==0:
+            save_model(model,optimizer,"save_%d.t7" % epoch,epoch)
             #test
             model.eval()
             for j,test_batch in enumerate(test_loader,0):
