@@ -107,7 +107,7 @@ def collate_gravity(l):
 dim=2
 gz=9.0
 
-train_loader = DataLoader(GravityDataset(size=256*8,dim=dim), batch_size=64,collate_fn=collate_gravity)
+train_loader = DataLoader(GravityDataset(size=256*32,dim=dim), batch_size=32,collate_fn=collate_gravity)
 test_loader = DataLoader(GravityDataset(size=1000,dim=dim), batch_size=64,collate_fn=collate_gravity)
 
 
@@ -120,13 +120,16 @@ def save_model(model,optimizer,save_fn,epoch):
 			'optimizer_state_dict': optimizer.state_dict(),
 			}, save_fn)
 
-def load_model(save_fn):
-    model.load_state_dict(torch.load(save_fn))
+def load_model(save_fn,model,optimizer):
+    d=torch.load(save_fn)
+    model.load_state_dict(d['model_state_dict'])
+    optimizer.load_state_dict(d['optimizer_state_dict'])
 
-        
-
-learning_rate = 5e-4 
+  
+learning_rate = 1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+load_model('save_20.t7',model,optimizer)
 #optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 for epoch in range(10000):
     train_loss=0
@@ -168,7 +171,7 @@ for epoch in range(10000):
         force=train_goals[0]['points'].detach().numpy()
         pred=train_inputs[0]['pred'].detach().numpy()
         #print(force,pred)
-        show_scene(train_inputs[0]['points'].detach().numpy(),train_inputs[0]['attrs'].detach().numpy(),force,pred=pred)
+        #show_scene(train_inputs[0]['points'].detach().numpy(),train_inputs[0]['attrs'].detach().numpy(),force,pred=pred)
         
         #print("TRAIN",train_loss,"TEST",test_loss,"TEST_MEAN",mean_loss,"DIFF",mean_loss-test_loss,ga,gs)
         #print(" TRAIN LOSS",train_loss/sz)
