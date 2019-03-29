@@ -8,6 +8,15 @@ from gravity_generator import GravityDataset,show_scene
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
+import argparse
+
+parser = argparse.ArgumentParser(description='Gravity example')
+parser.add_argument('--load', type=str, help='load checkpoint')
+parser.add_argument('--dim', type=int, help='dim is 2 or 3', default=2)
+parser.add_argument('--grid-size', type=int, help='grid size (NxN) 2D or (NxNxN) 3D', default=9)
+parser.add_argument('--learning-rate', type=float, help='learning rate', default=1e-3)
+args = parser.parse_args()
+
 class Model(nn.Module):
     def __init__(self,gz,dim):
         super(Model, self).__init__()
@@ -71,14 +80,12 @@ def collate_gravity(l):
         inputs.append({'points':Variable(torch.Tensor(train_example['points']),requires_grad = True) , 'attrs':torch.Tensor(train_example['mass'])})
     return goals,inputs
 
-dim=2
-gz=9.0
 
-train_loader = DataLoader(GravityDataset(size=256*32,dim=dim), batch_size=32,collate_fn=collate_gravity)
-test_loader = DataLoader(GravityDataset(size=1000,dim=dim), batch_size=64,collate_fn=collate_gravity)
+train_loader = DataLoader(GravityDataset(size=256*32,dim=args.dim), batch_size=32,collate_fn=collate_gravity)
+test_loader = DataLoader(GravityDataset(size=1000,dim=args.dim), batch_size=64,collate_fn=collate_gravity)
 
 
-model = Model(gz,dim)
+model = Model(args.grid_size,args.dim)
 
 def save_model(model,optimizer,save_fn,epoch):
     torch.save({
@@ -93,27 +100,36 @@ def load_model(save_fn,model,optimizer):
     optimizer.load_state_dict(d['optimizer_state_dict'])
 
   
-learning_rate = 1e-3
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+#optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
 
-#load_model('save_20.t7',model,optimizer)
-#optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+if args.load:
+    load_model(args.load,model,optimizer)
+
 for epoch in range(10000):
     train_loss=0
     sz=0
     epoch_loss=0
     epoch_size=0
     for i,train_batch in enumerate(train_loader,0):
-        sz+=len(train_batch[0])
+        epoch_size += len(train_batch[0])
+
         if i%1000==0:
             save_model(model,optimizer,"save_%d.t7" % epoch,epoch)
             #test
             model.eval()
+            test_sz=0
+            avg_test_loss=0
+            test_inputs=None
             for j,test_batch in enumerate(test_loader,0):
+                test_sz+=len(test_batch[0])
                 test_goals,test_inputs=test_batch
                 test_loss,_,_ = model(test_goals,test_inputs)
-                #test_loss += test_out.item()
+                avg_test_loss+=test_loss.item()
+                #print(test_loss.item()/len(test_batch[0]))
                 #mean_loss += (torch.cat([goal['points'] for goal in goals_test ])**2).mean().item()
+            show_scene(test_inputs[0]['points'].detach().numpy(),test_inputs[0]['attrs'].detach().numpy(),test_goals[0]['points'].detach().numpy(),pred=test_inputs[0]['pred'].detach().numpy())
+            print("*TEST LOSS",avg_test_loss/test_sz)
         
         #run a training round
         model.train()
@@ -121,25 +137,17 @@ for epoch in range(10000):
         train_goals,train_inputs=train_batch
         model_out,s,a = model(train_goals,train_inputs)
         
-        train_loss += model_out.item()
-        epoch_loss += train_loss
-        epoch_size += sz
-        #ga = a.item()
-        #gs = s.item()
+        epoch_loss += model_out.item()
    
         optimizer.zero_grad()
-        #print("PARAM",sum([ x.sum() for x in model.parameters() ]),sum([ np.prod(x.size()) for x in model.parameters() ]))
-        #for parameter in model.parameters():
-        #    print("PARAMS",parameter.size())
-        #    #print("GRAD",parameter.size(),parameter.grad)
+
         model_out.backward()
         optimizer.step()
         force=train_goals[0]['points'].detach().numpy()
         pred=train_inputs[0]['pred'].detach().numpy()
         #print(force,pred)
-        #show_scene(train_inputs[0]['points'].detach().numpy(),train_inputs[0]['attrs'].detach().numpy(),force,pred=pred)
         
         #print("TRAIN",train_loss,"TEST",test_loss,"TEST_MEAN",mean_loss,"DIFF",mean_loss-test_loss,ga,gs)
         #print(" TRAIN LOSS",train_loss/sz)
-    print("TRAIN LOSS",epoch_loss/epoch_size)
+    print("*TRAIN LOSS",epoch_loss/epoch_size)
             
