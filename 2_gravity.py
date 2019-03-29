@@ -8,39 +8,6 @@ from gravity_generator import GravityDataset,show_scene
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
-#https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/10
-def plot_grad_flow(named_parameters):
-    '''Plots the gradients flowing through different layers in the net during training.
-    Can be used for checking for possible gradient vanishing / exploding problems.
-    
-    Usage: Plug this function in Trainer class after loss.backwards() as 
-    "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
-    print(named_parameters)
-    ave_grads = []
-    max_grads= []
-    layers = []
-    for n, p in named_parameters:
-        print(n)
-        if(p.requires_grad):
-            print(n)
-            layers.append(n)
-            ave_grads.append(p.grad.abs().mean())
-            max_grads.append(p.grad.abs().max())
-    plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
-    plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
-    plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
-    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    plt.xlim(left=0, right=len(ave_grads))
-    plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
-    plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
-    plt.grid(True)
-    #plt.legend([Line2D([0], [0], color="c", lw=4),
-    #            Line2D([0], [0], color="b", lw=4),
-    #            Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
-    plt.pause(5)
-
 class Model(nn.Module):
     def __init__(self,gz,dim):
         super(Model, self).__init__()
@@ -63,7 +30,7 @@ class Model(nn.Module):
             self.conv_model.add_module("conv%d" % (x+2),self.conv(8, 8, 5, stride=1,padding=2))
             if bn:
                 self.conv_model.add_module("bn%d" % (x+2),self.bn(8))
-                self.conv_model.add_module("act%d" % (x+2),self.act())
+            self.conv_model.add_module("act%d" % (x+2),self.act())
 
         print(self.conv_model)
 
@@ -129,7 +96,7 @@ def load_model(save_fn,model,optimizer):
 learning_rate = 1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-load_model('save_20.t7',model,optimizer)
+#load_model('save_20.t7',model,optimizer)
 #optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 for epoch in range(10000):
     train_loss=0
@@ -166,7 +133,6 @@ for epoch in range(10000):
         #    print("PARAMS",parameter.size())
         #    #print("GRAD",parameter.size(),parameter.grad)
         model_out.backward()
-        #plot_grad_flow(model.conv_model.named_parameters())
         optimizer.step()
         force=train_goals[0]['points'].detach().numpy()
         pred=train_inputs[0]['pred'].detach().numpy()
